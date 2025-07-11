@@ -11,23 +11,30 @@ import { useThemeContext } from 'mod-arch-shared';
 import ResourceNameDefinitionTooltip from '~/concepts/k8s/ResourceNameDefinitionTootip';
 import FormFieldset from '~/app/pages/modelRegistry/screens/components/FormFieldset';
 import ResourceNameField from './ResourceNameField';
+import {
+  UseK8sNameDescriptionDataConfiguration,
+  UseK8sNameDescriptionFieldData,
+  K8sNameDescriptionFieldData,
+  K8sNameDescriptionFieldUpdateFunction,
+} from './types';
+import { handleUpdateLogic, setupDefaults } from './utils';
 
 // TODO: replace with the actual call once we have the endpoint
 
 /** Companion data hook */
-// export const useK8sNameDescriptionFieldData = (
-//   configuration: UseK8sNameDescriptionDataConfiguration = {},
-// ): UseK8sNameDescriptionFieldData => {
-//   const [data, setData] = React.useState<K8sNameDescriptionFieldData>(() =>
-//     setupDefaults(configuration),
-//   );
+export const useK8sNameDescriptionFieldData = (
+  configuration: UseK8sNameDescriptionDataConfiguration = {},
+): UseK8sNameDescriptionFieldData => {
+  const [data, setData] = React.useState<K8sNameDescriptionFieldData>(() =>
+    setupDefaults(configuration),
+  );
 
-//   const onDataChange = React.useCallback<K8sNameDescriptionFieldUpdateFunction>((key, value) => {
-//     setData((currentData) => handleUpdateLogic(currentData)(key, value));
-//   }, []);
+  const onDataChange = React.useCallback<K8sNameDescriptionFieldUpdateFunction>((key, value) => {
+    setData((currentData) => handleUpdateLogic(currentData)(key, value));
+  }, []);
 
-//   return { data, onDataChange };
-// };
+  return { data, onDataChange };
+};
 
 type NameDescType = {
   name: string;
@@ -36,7 +43,7 @@ type NameDescType = {
 
 type K8sNameDescriptionFieldProps = {
   data: NameDescType;
-  onDataChange: (data: NameDescType) => void;
+  onDataChange?: UseK8sNameDescriptionFieldData['onDataChange'];
   dataTestId: string;
   descriptionLabel?: string;
   nameLabel?: string;
@@ -66,7 +73,7 @@ const K8sNameDescriptionField: React.FC<K8sNameDescriptionFieldProps> = ({
       id={`${dataTestId}-name`}
       name={`${dataTestId}-name`}
       value={data.name}
-      onChange={(_e, value) => onDataChange({ ...data, name: value })}
+      onChange={(event, value) => onDataChange?.('name', value)}
       isRequired
     />
   );
@@ -115,7 +122,7 @@ const K8sNameDescriptionField: React.FC<K8sNameDescriptionFieldProps> = ({
       name={`${dataTestId}-description`}
       type="text"
       value={data.description}
-      onChange={(_e, value) => onDataChange({ ...data, description: value })}
+      onChange={(event, value) => onDataChange?.('description', value)}
     />
   );
 
@@ -126,7 +133,7 @@ const K8sNameDescriptionField: React.FC<K8sNameDescriptionFieldProps> = ({
       name={`${dataTestId}-description`}
       type="text"
       value={data.description}
-      onChange={(_e, value) => onDataChange({ ...data, description: value })}
+      onChange={(event, value) => onDataChange?.('description', value)}
       resizeOrientation="vertical"
     />
   );

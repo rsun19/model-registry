@@ -10,6 +10,9 @@ const IMAGE_DIR = process.env.IMAGE_DIR || 'images';
 const LOGO_LIGHT = process.env.LOGO || 'logo-light-theme.svg';
 const URL_PREFIX = '/model-registry';
 const BFF_API_VERSION = 'v1';
+const MAX_RESOURCE_NAME_LENGTH = 253;
+const ROUTE_BASED_NAME_LENGTH = 30;
+const MAX_PVC_NAME_LENGTH = 63;
 
 export {
   STYLE_THEME,
@@ -21,6 +24,9 @@ export {
   URL_PREFIX,
   DEPLOYMENT_MODE,
   BFF_API_VERSION,
+  MAX_RESOURCE_NAME_LENGTH,
+  ROUTE_BASED_NAME_LENGTH,
+  MAX_PVC_NAME_LENGTH,
 };
 
 export const FindAdministratorOptions = [

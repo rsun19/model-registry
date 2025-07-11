@@ -16,10 +16,12 @@ import {
   RoleBindingSubject,
   RoleBindingRoleRef,
   genRandomChars,
+  RecursivePartial,
 } from 'mod-arch-shared';
-import { ModelRegistry, ModelRegistryPayload } from '~/app/types';
+import { ModelRegistry, ModelRegistryAndCredentials } from '~/app/types';
 import { BFF_API_VERSION, URL_PREFIX } from '~/app/utilities/const';
 import { RoleBindingPermissionsRoleType } from '~/app/pages/settings/roleBinding/types';
+import { ListConfigSecretsResponse } from '../shared/components/types';
 
 export const getListModelRegistries =
   (hostPath: string, queryParams: Record<string, unknown> = {}) =>
@@ -98,13 +100,30 @@ export const getRoleBindings =
       throw new Error('Invalid response format');
     });
 
-export const getModelRegistrySettings =
+export const listModelRegistryCertificateNames =
   (hostPath: string, queryParams: Record<string, unknown> = {}) =>
-  (opts: APIOptions, modelRegistryId: string): Promise<ModelRegistryKind> =>
+  (opts: APIOptions): Promise<ListConfigSecretsResponse> =>
     handleRestFailures(
       restGET(
         hostPath,
-        `${URL_PREFIX}/api/${BFF_API_VERSION}/settings/model_registry/${modelRegistryId}`,
+        `${URL_PREFIX}/api/${BFF_API_VERSION}/settings/certificates`,
+        queryParams,
+        opts,
+      ),
+    ).then((response) => {
+      if (isModArchResponse<ListConfigSecretsResponse>(response)) {
+        return response.data;
+      }
+      throw new Error('Invalid response format');
+    });
+
+export const getModelRegistrySettings =
+  (hostPath: string, queryParams: Record<string, unknown> = {}) =>
+  (opts: APIOptions, modelRegistryName: string): Promise<ModelRegistryKind> =>
+    handleRestFailures(
+      restGET(
+        hostPath,
+        `${URL_PREFIX}/api/${BFF_API_VERSION}/settings/model_registry/${modelRegistryName}`,
         queryParams,
         opts,
       ),
@@ -134,7 +153,7 @@ export const listModelRegistrySettings =
 
 export const createModelRegistrySettings =
   (hostPath: string, queryParams: Record<string, unknown> = {}) =>
-  (opts: APIOptions, data: ModelRegistryPayload): Promise<ModelRegistryKind> =>
+  (opts: APIOptions, data: ModelRegistryAndCredentials): Promise<ModelRegistryKind> =>
     handleRestFailures(
       restCREATE(
         hostPath,
@@ -176,19 +195,19 @@ export const patchModelRegistrySettings =
   (hostPath: string, queryParams: Record<string, unknown> = {}) =>
   (
     opts: APIOptions,
-    data: ModelRegistryKind,
+    patch: RecursivePartial<ModelRegistryAndCredentials>,
     modelRegistryId: string,
-  ): Promise<ModelRegistryKind[]> =>
+  ): Promise<ModelRegistryAndCredentials> =>
     handleRestFailures(
       restPATCH(
         hostPath,
         `${URL_PREFIX}/api/${BFF_API_VERSION}/settings/model_registry/${modelRegistryId}`,
-        assembleModArchBody(data),
+        assembleModArchBody(patch),
         queryParams,
         opts,
       ),
     ).then((response) => {
-      if (isModArchResponse<ModelRegistryKind[]>(response)) {
+      if (isModArchResponse<ModelRegistryAndCredentials>(response)) {
         return response.data;
       }
       throw new Error('Invalid response format');

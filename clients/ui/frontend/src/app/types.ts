@@ -1,4 +1,4 @@
-import { APIOptions } from 'mod-arch-shared';
+import { APIOptions, ModelRegistryKind } from 'mod-arch-shared';
 
 export enum ModelState {
   LIVE = 'LIVE',
@@ -224,4 +224,10 @@ export type ModelRegistryAPIs = {
   patchRegisteredModel: PatchRegisteredModel;
   patchModelVersion: PatchModelVersion;
   patchModelArtifact: PatchModelArtifact;
+};
+
+export type ModelRegistryAndCredentials = {
+  modelRegistry: Omit<ModelRegistryKind, 'spec'>;
+  databasePassword?: string;
+  newDatabaseCACertificate?: string;
 };

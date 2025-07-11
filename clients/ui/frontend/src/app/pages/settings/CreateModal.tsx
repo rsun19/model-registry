@@ -12,67 +12,112 @@ import {
   ModalFooter,
   ModalHeader,
   ModalBody,
+  Bullseye,
+  Checkbox,
+  Spinner,
 } from '@patternfly/react-core';
-import { useNavigate } from 'react-router';
-import { FormSection } from 'mod-arch-shared';
-import { createModelRegistrySettings } from '~/app/api/k8s';
+import { DatabaseType, FormSection, ModelRegistryKind, RecursivePartial } from 'mod-arch-shared';
+import { createModelRegistrySettings, patchModelRegistrySettings } from '~/app/api/k8s';
 import ModelRegistryDatabasePassword from '~/app/pages/settings/ModelRegistryDatabasePassword';
-import K8sNameDescriptionField from '~/concepts/k8s/K8sNameDescriptionField/K8sNameDescriptionField';
+import K8sNameDescriptionField, {
+  useK8sNameDescriptionFieldData,
+} from '~/concepts/k8s/K8sNameDescriptionField/K8sNameDescriptionField';
 import ThemeAwareFormGroupWrapper from '~/app/pages/settings/components/ThemeAwareFormGroupWrapper';
-
-type NameDescType = {
-  name: string;
-  description: string;
-};
-
-type ModelRegistryPayload = {
-  modelRegistry: {
-    metadata: {
-      name: string;
-      annotations: {
-        'openshift.io/display-name': string;
-        'openshift.io/description': string;
-      };
-    };
-    spec: {
-      mysql: {
-        host: string;
-        port: number;
-        username: string;
-        database: string;
-      };
-    };
-  };
-};
+import { BFF_API_VERSION } from '~/app/utilities/const';
+import { isValidK8sName, translateDisplayNameForK8s } from '~/app/shared/components/utils';
+import { SecureDBRType, ResourceType } from './const';
+import { CreateMRSecureDBSection, SecureDBInfo } from './CreateMRSecureDBSection';
+import { constructRequestBody, findConfigMap } from './utils';
+import useModelRegistryCertificateNames from '../modelRegistrySettings/useModelRegistryCertificateNames';
 
 type CreateModalProps = {
   onClose: () => void;
   refresh: () => void;
+  modelRegistry?: ModelRegistryKind;
 };
 
-const CreateModal: React.FC<CreateModalProps> = ({ onClose, refresh }) => {
+const CreateModal: React.FC<CreateModalProps> = ({ onClose, refresh, modelRegistry: mr }) => {
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<Error>();
-  const [nameDesc, setNameDesc] = React.useState<NameDescType>({
-    name: '',
-    description: '',
+  const { data: nameDesc, onDataChange: setNameDesc } = useK8sNameDescriptionFieldData({
+    initialData: mr,
   });
   const [host, setHost] = React.useState('');
   const [port, setPort] = React.useState('');
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [database, setDatabase] = React.useState('');
+  const [addSecureDB, setAddSecureDB] = React.useState(false);
   const [isHostTouched, setIsHostTouched] = React.useState(false);
   const [isPortTouched, setIsPortTouched] = React.useState(false);
   const [isUsernameTouched, setIsUsernameTouched] = React.useState(false);
   const [isPasswordTouched, setIsPasswordTouched] = React.useState(false);
   const [isDatabaseTouched, setIsDatabaseTouched] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
+  const {
+    data: configSecrets,
+    loaded: configSecretsLoaded,
+    error: configSecretsError,
+  } = useModelRegistryCertificateNames(!addSecureDB);
+  const modelRegistryNamespace = 'kubeflow';
+  const [secureDBInfo, setSecureDBInfo] = React.useState<SecureDBInfo>({
+    type: SecureDBRType.EXISTING,
+    nameSpace: '',
+    resourceName: '',
+    certificate: '',
+    key: '',
+    isValid: true,
+  });
 
-  const navigate = useNavigate();
+  React.useEffect(() => {
+    if (configSecretsLoaded && !configSecretsError && !mr) {
+      setSecureDBInfo((prev) => ({
+        ...prev,
+        type: SecureDBRType.EXISTING,
+        isValid: true,
+      }));
+    }
+  }, [configSecretsLoaded, configSecretsError, mr]);
+
+  React.useEffect(() => {
+    if (mr) {
+      const dbSpec = mr.databaseConfig;
+      setHost(dbSpec.host);
+      setPort(dbSpec.port.toString());
+      setUsername(dbSpec.username);
+      setDatabase(dbSpec.database);
+      const certificateResourceRef =
+        mr.databaseConfig.sslRootCertificateConfigMap || mr.databaseConfig.sslRootCertificateSecret;
+      if (certificateResourceRef) {
+        setAddSecureDB(true);
+        const existingInfo = {
+          type: SecureDBRType.EXISTING,
+          nameSpace: '',
+          key: certificateResourceRef.key,
+          resourceName: certificateResourceRef.name,
+          resourceType: mr.databaseConfig.sslRootCertificateSecret
+            ? ResourceType.Secret
+            : ResourceType.ConfigMap,
+          certificate: '',
+        };
+        setSecureDBInfo({ ...existingInfo, isValid: true });
+      }
+    }
+  }, [mr]);
+
+  // if (!modelRegistryNamespace) {
+  //   return (
+  //     <ApplicationsPage loaded empty={false}>
+  //       <RedirectErrorState
+  //         title="Could not load component state"
+  //         errorMessage="No registries namespace could be found"
+  //       />
+  //     </ApplicationsPage>
+  //   );
+  // }
 
   const onBeforeClose = () => {
     setError(undefined);
-    setNameDesc({ name: '', description: '' });
     setHost('');
     setPort('');
     setUsername('');
@@ -90,47 +135,103 @@ const CreateModal: React.FC<CreateModalProps> = ({ onClose, refresh }) => {
   const hasContent = (value: string): boolean => !!value.trim().length;
 
   const canSubmit = () =>
+    !isSubmitting &&
+    isValidK8sName(nameDesc.k8sName.value || translateDisplayNameForK8s(nameDesc.name)) &&
     hasContent(nameDesc.name) &&
     hasContent(host) &&
     hasContent(password) &&
     hasContent(port) &&
     hasContent(username) &&
-    hasContent(database);
+    hasContent(database) &&
+    (!addSecureDB || (secureDBInfo.isValid && !configSecretsError));
 
   const onSubmit = async () => {
+    setIsSubmitting(true);
     setError(undefined);
 
-    // This is a simplified payload for the BFF, not a full K8s object.
-    const payload: ModelRegistryPayload = {
-      modelRegistry: {
-        metadata: {
-          name: nameDesc.name,
-          annotations: {
-            'openshift.io/display-name': nameDesc.name,
-            'openshift.io/description': nameDesc.description,
-          },
-        },
-        spec: {
-          mysql: {
-            host,
-            port: Number(port),
-            username,
-            database,
-          },
-        },
-      },
-    };
+    const newDatabaseCACertificate =
+      addSecureDB && secureDBInfo.type === SecureDBRType.NEW ? secureDBInfo.certificate : undefined;
 
-    try {
-      await createModelRegistrySettings(window.location.origin, {
-        namespace: 'model-registry',
-      })({}, payload);
-      refresh();
-      navigate(`/model-registry-settings`);
-      onClose();
-    } catch (e) {
-      if (e instanceof Error) {
-        setError(e);
+    if (mr) {
+      const data: RecursivePartial<ModelRegistryKind> = {
+        metadata: {
+          annotations: {
+            'openshift.io/description': nameDesc.description,
+            'openshift.io/display-name': nameDesc.name.trim(),
+          },
+        },
+        databaseConfig: {
+          host,
+          port: Number(port),
+          database,
+          username,
+        },
+      };
+      try {
+        await patchModelRegistrySettings('')(
+          {},
+          {
+            modelRegistry: constructRequestBody(data, secureDBInfo, addSecureDB),
+            databasePassword: password,
+            newDatabaseCACertificate,
+          },
+          mr.metadata.name,
+        );
+        refresh();
+        onBeforeClose();
+      } catch (e) {
+        if (e instanceof Error) {
+          setError(e);
+        }
+        setIsSubmitting(false);
+      }
+    } else {
+      const data: Omit<ModelRegistryKind, 'spec'> = {
+        apiVersion: BFF_API_VERSION,
+        kind: 'ModelRegistry',
+        metadata: {
+          name: nameDesc.k8sName.value || translateDisplayNameForK8s(nameDesc.name),
+          namespace: 'model-registry',
+          annotations: {
+            'openshift.io/description': nameDesc.description,
+            'openshift.io/display-name': nameDesc.name.trim(),
+          },
+        },
+        databaseConfig: {
+          host,
+          port: Number(port),
+          database,
+          username,
+          databaseType: DatabaseType.MySQL,
+          skipDBCreation: false,
+        },
+      };
+
+      if (addSecureDB && secureDBInfo.resourceType === ResourceType.Secret) {
+        data.databaseConfig.sslRootCertificateSecret = {
+          name: secureDBInfo.resourceName,
+          key: secureDBInfo.key,
+        };
+      } else if (addSecureDB) {
+        data.databaseConfig.sslRootCertificateConfigMap = findConfigMap(secureDBInfo);
+      }
+
+      try {
+        await createModelRegistrySettings('')(
+          {},
+          {
+            modelRegistry: data,
+            databasePassword: password,
+            newDatabaseCACertificate,
+          },
+        );
+        refresh();
+        onBeforeClose();
+      } catch (e) {
+        if (e instanceof Error) {
+          setError(e);
+        }
+        setIsSubmitting(false);
       }
     }
   };
@@ -294,6 +395,43 @@ const CreateModal: React.FC<CreateModalProps> = ({ onClose, refresh }) => {
             </ThemeAwareFormGroupWrapper>
 
             {/* ... Optional TLS section ... */}
+
+            <>
+              <FormGroup>
+                <Checkbox
+                  label="Add CA certificate to secure database connection"
+                  isChecked={addSecureDB}
+                  onChange={(_e, value) => setAddSecureDB(value)}
+                  id="add-secure-db"
+                  data-testid="add-secure-db-mr-checkbox"
+                  name="add-secure-db"
+                />
+              </FormGroup>
+              {addSecureDB &&
+                (!configSecretsLoaded && !configSecretsError ? (
+                  <Bullseye>
+                    <Spinner className="pf-v6-u-m-md" />
+                  </Bullseye>
+                ) : configSecretsLoaded ? (
+                  <CreateMRSecureDBSection
+                    secureDBInfo={secureDBInfo}
+                    modelRegistryNamespace={modelRegistryNamespace}
+                    k8sName={nameDesc.k8sName.value}
+                    existingCertConfigMaps={configSecrets.configMaps}
+                    existingCertSecrets={configSecrets.secrets}
+                    setSecureDBInfo={setSecureDBInfo}
+                  />
+                ) : (
+                  <Alert
+                    isInline
+                    variant="danger"
+                    title="Error fetching config maps and secrets"
+                    data-testid="error-fetching-resource-alert"
+                  >
+                    {configSecretsError?.message}
+                  </Alert>
+                ))}
+            </>
           </FormSection>
 
           {error && (

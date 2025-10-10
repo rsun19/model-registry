@@ -1,7 +1,10 @@
 import { modelCatalog } from '~/__tests__/cypress/cypress/pages/modelCatalog';
 import {
+  mockCatalogAccuracyMetricsArtifact,
   mockCatalogModel,
+  mockCatalogModelArtifact,
   mockCatalogModelList,
+  mockCatalogPerformanceMetricsArtifact,
   mockCatalogSource,
   mockCatalogSourceList,
 } from '~/__mocks__';
@@ -57,6 +60,24 @@ const initIntercepts = ({
     },
     mockCatalogFilterOptionsList(),
   );
+
+  cy.interceptApi(
+    `GET /api/:apiVersion/model_catalog/sources/:sourceId/artifacts/:modelName`,
+    {
+      path: {
+        apiVersion: MODEL_CATALOG_API_VERSION,
+        sourceId: 'sample-source',
+        modelName: 'repo1/model1',
+      },
+    },
+    {
+      items: [
+        mockCatalogPerformanceMetricsArtifact({}),
+        mockCatalogAccuracyMetricsArtifact({}),
+        mockCatalogModelArtifact({}),
+      ],
+    },
+  ).as('getCatalogModelArtifacts');
 };
 
 describe('ModelCatalogCard Component', () => {
@@ -112,6 +133,7 @@ describe('ModelCatalogCard Component', () => {
 
   describe('Validated Model', () => {
     it('should show validated model correctly', () => {
+      cy.wait('@getCatalogModelArtifacts');
       modelCatalog.findLastModelCatalogCard().within(() => {
         modelCatalog.findValidatedModelBenchmarkLink().click();
         cy.url().should('include', 'performance-insights');

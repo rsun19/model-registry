@@ -14,9 +14,6 @@ import { ModelCatalogContext } from '~/app/context/modelCatalog/ModelCatalogCont
 import { useCatalogModelsBySources } from '~/app/hooks/modelCatalog/useCatalogModelsBySource';
 import { CatalogModel } from '~/app/modelCatalogTypes';
 import ModelCatalogCard from '~/app/pages/modelCatalog/components/ModelCatalogCard';
-import { isModelValidated } from '~/app/pages/modelCatalog/utils/modelCatalogUtils';
-import { mockPerformanceMetricsArtifacts } from '~/app/pages/modelCatalog/mocks/hardwareConfigurationMock';
-import { mockAccuracyMetricsArtifacts } from '~/app/pages/modelCatalog/mocks/accuracyMetricsMock';
 import EmptyModelCatalogState from '~/app/pages/modelCatalog/EmptyModelCatalogState';
 
 type ModelCatalogPageProps = {
@@ -80,10 +77,6 @@ const ModelCatalogPage: React.FC<ModelCatalogPageProps> = ({ searchTerm }) => {
             key={`${model.name}/${model.source_id}`}
             model={model}
             source={selectedSource}
-            performanceMetrics={
-              isModelValidated(model) ? mockPerformanceMetricsArtifacts : undefined
-            }
-            accuracyMetrics={isModelValidated(model) ? mockAccuracyMetricsArtifacts : undefined}
           />
         ))}
       </Gallery>
